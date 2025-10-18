@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Аналитическая система бурения</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="main-container">
+        <div class="main-header">
+            <h1><i class="fas fa-chart-line"></i> Аналитическая система бурения</h1>
+            <p class="subtitle">Комплексный мониторинг и анализ процесса бурения</p>
+        </div>
+        
+        <div class="service-cards">
+            <div class="service-card" onclick="navigateTo('analytics')">
+                <h2>Общая аналитика блоков скважин</h2>
+                <p>Мониторинг прогресса бурения, производительности станков и общей эффективности по всем блокам</p>
+                <div class="service-features">
+                    <span><i class="fas fa-check"></i> Общая статистика</span>
+                    <span><i class="fas fa-check"></i> Прогресс бурения</span>
+                    <span><i class="fas fa-check"></i> Производительность</span>
+                </div>
+                <button class="service-button">Перейти к аналитике</button>
+            </div>
+            
+            <div class="service-card" onclick="navigateTo('borehole-analytics')">
+                <h2>Аналитика скважин внутри блока</h2>
+                <p>Детальный анализ отклонений, 3D визуализация и мониторинг параметров скважин внутри конкретного блока</p>
+                <div class="service-features">
+                    <span><i class="fas fa-check"></i> Детальная аналитика</span>
+                    <span><i class="fas fa-check"></i> 3D визуализация</span>
+                    <span><i class="fas fa-check"></i> Контроль отклонений</span>
+                </div>
+                <button class="service-button">Перейти к аналитике</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function navigateTo(service) {
+            if (service === 'analytics') {
+                window.location.href = '/analytics';
+            } else if (service === 'borehole-analytics') {
+                window.location.href = '/borehole-analytics';
+            }
+        }
+    </script>
+</body>
+</html>

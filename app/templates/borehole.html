@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Скважина {{ borehole.name }} (блок {{ block_id }})</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-water"></i> Скважина {{ borehole.name }}</h1>
+            <div class="header-actions">
+                <button id="back-btn" class="btn btn-back"><i class="fas fa-arrow-left"></i> Назад к блоку</button>
+            </div>
+        </div>
+
+        <div class="borehole-details">
+            <!-- Координаты -->
+            {% if borehole.dist %}
+            <div class="detail-section">
+                <h2><i class="fas fa-map-marked-alt"></i> Координаты</h2>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Плановые:</span>
+                        <span class="detail-value">({{ "%.2f"|format(borehole.dist.planned[0]) }}, {{ "%.2f"|format(borehole.dist.planned[1]) }})</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Фактические:</span>
+                        <span class="detail-value">({{ "%.2f"|format(borehole.dist.actual[0]) }}, {{ "%.2f"|format(borehole.dist.actual[1]) }})</span>
+                    </div>
+                    <div class="detail-item {% if borehole.dist.deviation > 5 %}critical{% endif %}">
+                        <span class="detail-label">Отклонение:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.dist.deviation) }} м</span>
+                        {% if borehole.dist.deviation > 5 %}
+                        <span class="detail-alert"><i class="fas fa-exclamation-triangle"></i> Превышение!</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Глубина -->
+            {% if borehole.length %}
+            <div class="detail-section">
+                <h2><i class="fas fa-ruler-vertical"></i> Глубина</h2>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Плановая:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.length.planned) }} м</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Фактическая:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.length.actual) }} м</span>
+                    </div>
+                    <div class="detail-item {% if borehole.length.diff > borehole.length.planned * 0.1 %}critical{% endif %}">
+                        <span class="detail-label">Отклонение:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.length.diff) }} м</span>
+                        {% if borehole.length.diff > borehole.length.planned * 0.1 %}
+                        <span class="detail-alert"><i class="fas fa-exclamation-triangle"></i> Превышение!</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Диаметр -->
+            {% if borehole.diameter %}
+            <div class="detail-section">
+                <h2><i class="fas fa-circle"></i> Диаметр</h2>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Плановый:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.diameter.planned) }} м</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Фактический:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.diameter.actual) }} м</span>
+                    </div>
+                    <div class="detail-item {% if borehole.diameter.diff > borehole.diameter.planned * 0.1 %}critical{% endif %}">
+                        <span class="detail-label">Отклонение:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.diameter.diff) }} м</span>
+                        {% if borehole.diameter.diff > borehole.diameter.planned * 0.1 %}
+                        <span class="detail-alert"><i class="fas fa-exclamation-triangle"></i> Превышение!</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Направление -->
+            {% if borehole.direction %}
+            <div class="detail-section">
+                <h2><i class="fas fa-compass"></i> Направление</h2>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Угол (план):</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.direction.angle_planned) }}°</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Угол (факт):</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.direction.angle_actual) }}°</span>
+                    </div>
+                    <div class="detail-item {% if borehole.direction.angle_diff > 5 %}critical{% endif %}">
+                        <span class="detail-label">Отклонение угла:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.direction.angle_diff) }}°</span>
+                        {% if borehole.direction.angle_diff > 5 %}
+                        <span class="detail-alert"><i class="fas fa-exclamation-triangle"></i> Превышение!</span>
+                        {% endif %}
+                    </div>
+                    {% if borehole.direction.azimuth_planned %}
+                    <div class="detail-item">
+                        <span class="detail-label">Азимут (план):</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.direction.azimuth_planned) }}°</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Азимут (факт):</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.direction.azimuth_actual) }}°</span>
+                    </div>
+                    <div class="detail-item {% if borehole.direction.azimuth_diff > 10 %}critical{% endif %}">
+                        <span class="detail-label">Отклонение азимута:</span>
+                        <span class="detail-value">{{ "%.2f"|format(borehole.direction.azimuth_diff) }}°</span>
+                        {% if borehole.direction.azimuth_diff > 10 %}
+                        <span class="detail-alert"><i class="fas fa-exclamation-triangle"></i> Превышение!</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="borehole-visualization">
+            <h2><i class="fas fa-chart-pie"></i> Визуализация данных</h2>
+            <div class="visualization-grid">
+                <div class="chart-container">
+                    <canvas id="deviationChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="parametersChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // График отклонений
+            const deviationCtx = document.getElementById('deviationChart').getContext('2d');
+            new Chart(deviationCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Координаты', 'Глубина', 'Диаметр', 'Угол', 'Азимут'],
+                    datasets: [{
+                        label: 'Отклонение',
+                        data: [
+                            {{ borehole.dist.deviation if borehole.dist else 0 }},
+                            {{ borehole.length.diff if borehole.length else 0 }},
+                            {{ borehole.diameter.diff if borehole.diameter else 0 }},
+                            {{ borehole.direction.angle_diff if borehole.direction else 0 }},
+                            {{ borehole.direction.azimuth_diff if (borehole.direction and borehole.direction.azimuth_diff) else 0 }}
+                        ],
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.6)',
+                            'rgba(255, 99, 132, 0.6)',
+                            'rgba(75, 192, 192, 0.6)',
+                            'rgba(153, 102, 255, 0.6)',
+                            'rgba(255, 159, 64, 0.6)'
+                        ],
+                        borderColor: [
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)',
+                            'rgba(255, 159, 64, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Сравнение отклонений по параметрам'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Диаграмма для параметров
+            const parametersCtx = document.getElementById('parametersChart').getContext('2d');
+            new Chart(parametersCtx, {
+                type: 'radar',
+                data: {
+                    labels: ['Глубина', 'Диаметр', 'Угол', 'Азимут'],
+                    datasets: [
+                        {
+                            label: 'Плановые',
+                            data: [
+                                {{ borehole.length.planned if borehole.length else 0 }},
+                                {{ borehole.diameter.planned if borehole.diameter else 0 }},
+                                {{ borehole.direction.angle_planned if borehole.direction else 0 }},
+                                {{ borehole.direction.azimuth_planned if (borehole.direction and borehole.direction.azimuth_planned) else 0 }}
+                            ],
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 2,
+                            pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                            pointRadius: 4
+                        },
+                        {
+                            label: 'Фактические',
+                            data: [
+                                {{ borehole.length.actual if borehole.length else 0 }},
+                                {{ borehole.diameter.actual if borehole.diameter else 0 }},
+                                {{ borehole.direction.angle_actual if borehole.direction else 0 }},
+                                {{ borehole.direction.azimuth_actual if (borehole.direction and borehole.direction.azimuth_actual) else 0 }}
+                            ],
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 2,
+                            pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+                            pointRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Сравнение параметров',
+                            font: {
+                                size: 16
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toFixed(2)}`;
+                                }
+                            }
+                        },
+                        datalabels: {
+                            formatter: function(value, context) {
+                                return value.toFixed(2);
+                            },
+                            color: '#333',
+                            font: {
+                                weight: 'bold',
+                                size: 12
+                            }
+                        }
+                    },
+                    scales: {
+                        r: {
+                            angleLines: {
+                                display: true
+                            },
+                            suggestedMin: 0,
+                            ticks: {
+                                display: false
+                            }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+
+            document.getElementById('back-btn').addEventListener('click', function() {
+                if (document.referrer && document.referrer.includes('/dashboard')) {
+                    window.history.back();
+                } else {
+                    window.location.href = '/dashboard?block_input={{ block_id }}';
+                }
+            });
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+</body>
+</html>

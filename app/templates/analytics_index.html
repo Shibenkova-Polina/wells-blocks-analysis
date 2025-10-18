@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Аналитика бурения</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-chart-simple"></i> Аналитика бурения</h1>
+            <div class="header-actions">
+                <a href="/" class="btn btn-back"><i class="fas fa-home"></i> На главную</a>
+            </div>
+        </header>
+        <div class="search-box">
+            <input type="text" id="block-search" placeholder="Поиск блока по ID...">
+            <button id="search-btn"><i class="fas fa-search"></i></button>
+        </div>
+
+        <div class="dashboard">
+            <div class="row">
+                <div class="card full-width">
+                    <h2><i class="fas fa-chart-pie"></i> Общая статистика</h2>
+                    <div class="stats-container">
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-blocks">0</div>
+                            <div class="stat-label">Всего блоков</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="drilled-blocks">0</div>
+                            <div class="stat-label">Пробурено блоков</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="progress-stat">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="blocks-progress-fill"></div>
+                                </div>
+                                <div class="progress-value" id="blocks-progress-value">0%</div>
+                            </div>
+                            <div class="stat-label">Прогресс бурения</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="card">
+                    <h2><i class="fas fa-bolt"></i> Производительность моделей станков</h2>
+                    <div class="chart-container">
+                        <canvas id="rigModelsChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2><i class="fas fa-check-circle"></i> Эффективность бурения по блокам</h2>
+                    <div class="chart-container">
+                        <canvas id="efficiencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="card full-width">
+                    <h2><i class="fas fa-list-ol"></i> Прогресс бурения по блокам</h2>
+                    <div class="table-container">
+                        <table id="blocks-table">
+                            <thead>
+                                <tr>
+                                    <th>ID блока</th>
+                                    <th>Название</th>
+                                    <th>Запланировано скважин</th>
+                                    <th>Пробурено скважин</th>
+                                    <th>Прогресс</th>
+                                    <th>Осталось смен</th>
+                                    <th>Эффективность</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно для деталей блока -->
+        <div id="block-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-btn">&times;</span>
+                <h2 id="modal-title">Детали блока</h2>
+                <div class="modal-body">
+                    <div class="block-info">
+                        <div class="info-row">
+                            <span class="info-label">ID блока:</span>
+                            <span id="block-id" class="info-value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Название:</span>
+                            <span id="block-name" class="info-value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Прогресс бурения:</span>
+                            <div class="progress-info">
+                                <div class="progress-bar">
+                                    <div id="block-progress-fill" class="progress-fill"></div>
+                                </div>
+                                <span id="block-progress-value" class="progress-value">0%</span>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Осталось смен:</span>
+                            <span id="remaining-shifts" class="info-value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Эффективность бурения:</span>
+                            <span id="efficiency" class="info-value"></span>
+                        </div>
+                    </div>
+
+                    <h3><i class="fas fa-cogs"></i> Станки на блоке</h3>
+                    <div class="table-container">
+                        <table id="rigs-table">
+                            <thead>
+                                <tr>
+                                    <th>ID станка</th>
+                                    <th>Название станка</th>
+                                    <th>Модель станка</th>
+                                    <th>Пробурено, м</th>
+                                    <th>Затрачено времени, ч</th>
+                                    <th>Затрачено смен</th>
+                                    <th>Осталось пробурить, м</th>
+                                    <th>Осталось смен</th>    
+                                    <th>Производительность (м/смену)</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/js/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дашборд блока {{ block_name }}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-chart-line"></i> Аналитика блока {{ block_name }}</h1>
+            <div class="header-actions">
+                <a href="/borehole-analytics" class="btn btn-back"><i class="fas fa-arrow-left"></i> Назад</a>
+                <button id="export-btn" class="btn btn-export"><i class="fas fa-file-export"></i> Экспорт</button>
+            </div>
+        </div>
+        <div class="block-info-section">
+            <h2><i class="fas fa-info-circle"></i> Информация о блоке</h2>
+            <div class="block-info-grid">
+                <div class="block-info-card">
+                    <h3><i class="fas fa-bolt"></i> Энергия дробления:</h3>
+                    <div class="block-info-value">{{ "%.2f"|format(block_info.crush_energy if block_info.crush_energy else 'N/A') }} МДж/куб.м</div>
+                </div>
+                <div class="block-info-card">
+                    <h3><i class="fas fa-ruler-horizontal"></i> Шаг между скважинами/рядами:</h3>
+                    <div class="block-info-value">{{ block_info.default_hole_space if block_info.default_hole_space else 'N/A' }} м / {{ block_info.default_row_distance if block_info.default_row_distance else 'N/A' }} м</div>
+                </div>
+                <div class="block-info-card">
+                    <h3><i class="fas fa-mountain"></i> Название породы:</h3>
+                    <div class="block-info-value">{{ block_info.rock_name if block_info.rock_name else 'N/A' }}</div>
+                </div>
+                <div class="block-info-card">
+                    <h3><i class="fas fa-gem"></i> Жесткость породы:</h3>
+                    <div class="block-info-value">{{ block_info.rock_rigidity if block_info.rock_rigidity else 'N/A' }}</div>
+                </div>
+                <div class="block-info-card">
+                    <h3><i class="fas fa-layer-group"></i> Плотность породы:</h3>
+                    <div class="block-info-value">{{ block_info.rock_density if block_info.rock_density else 'N/A' }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="metrics-cards">
+            {% for row in report_data[:5] %}
+            <div class="metric-card
+                    {% if row[1] is not none and ('Процент' in row[0] and row[1] > 0) %}
+                    info
+                    {% endif %}">
+                <div class="metric-card-header">
+                    <h3>{{ row[0] }}</h3>
+                    {% if 'Процент' in row[0] %}
+                    <div class="progress-circle" data-value="{{ row[1] if row[1] is not none else 0 }}">
+                        <svg viewBox="0 0 36 36" class="circular-chart">
+                            <path class="circle-bg"
+                                d="M18 2.0845
+                                a 15.9155 15.9155 0 0 1 0 31.831
+                                a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <path class="circle"
+                                stroke-dasharray="{{ row[1] if row[1] is not none else 0 }}, 100"
+                                d="M18 2.0845
+                                a 15.9155 15.9155 0 0 1 0 31.831
+                                a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <text x="18" y="20.35" class="percentage">{{ row[1] if row[1] is not none else 'N/A' }}</text>
+                        </svg>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="metric-value">{{ row[1] if row[1] is not none else 'N/A' }}</div>
+
+                {% if row[2] %}
+                    <div class="report-card-details">
+                        <i class="fas fa-info-circle"></i> {{ row[2] }}
+                    </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="openTab('report')">Отчет</button>
+            <button class="tab-btn" onclick="openTab('charts')">Графики</button>
+            <button class="tab-btn" onclick="openTab('boreholes')">Скважины</button>
+            <button class="tab-btn" onclick="openTab('critical')">Критические отклонения</button>
+            <button class="tab-btn" onclick="openTab('drilling-grid')">Буровая сетка</button>
+            <button class="tab-btn" onclick="openTab('model-3d')">3D модель</button>
+        </div>
+
+        <div id="report" class="tab-content active">
+            <h2><i class="fas fa-file-alt"></i> Полный отчет</h2>
+            
+            {# Определяем массив с конфигурацией для каждой линии #}
+            {% set lines = [
+                {
+                    'title': 'Количество пар по этапам бурения',
+                    'icon': 'fa-layer-group',
+                    'parameters': [
+                        'Количество пар на начальном этапе бурения',
+                        'Количество пар в середине процесса бурения',
+                        'Количество пар на завершающем этапе бурения'
+                    ],
+                    'has_progress': false,
+                    'has_warning': false
+                },
+                {
+                    'title': 'Отклонения расстояния и глубины',
+                    'icon': 'fa-ruler-combined',
+                    'parameters': [
+                        'Среднее отклонение расстояния (м)',
+                        'Среднее отклонение глубины (м)',
+                        'Процент пар с превышением глубины >10%'
+                    ],
+                    'has_progress': true,
+                    'has_warning': true,
+                    'unit': 'м'
+                },
+                {
+                    'title': 'Полезная длина и перебур',
+                    'icon': 'fa-ruler-vertical',
+                    'parameters': [
+                        'Процент пар с увеличенной полезной длиной',
+                        'Среднее отклонение перебура (м)',
+                        'Процент пар с превышением перебура >10%'
+                    ],
+                    'has_progress': true,
+                    'has_warning': true,
+                    'unit': 'м'
+                },
+                {
+                    'title': 'Отклонения диаметра',
+                    'icon': 'fa-circle',
+                    'parameters': [
+                        'Среднее отклонение диаметра (м)',
+                        'Процент пар с превышением диаметра >10%'
+                    ],
+                    'has_progress': true,
+                    'has_warning': true,
+                    'unit': 'м'
+                },
+                {
+                    'title': 'Отклонения угла и азимута',
+                    'icon': 'fa-compass',
+                    'parameters': [
+                        'Процент пар с отклонением угла >10%',
+                        'Среднее отклонение угла наклона (град)',
+                        'Процент пар с отклонением азимута >10%',
+                        'Среднее отклонение азимута (град)'
+                    ],
+                    'has_progress': true,
+                    'has_warning': true,
+                    'unit': '°'
+                }
+            ] %}
+
+            {# Рендерим каждую линию #}
+            {% for line in lines %}
+            <div class="report-line">
+                <h3><i class="fas {{ line.icon }}"></i> {{ line.title }}</h3>
+                <div class="report-grid">
+                    {% for row in report_data[5:] %}
+                        {% if row[0] in line.parameters %}
+                        <div class="report-card 
+                            {% if line.has_warning and row[1] is not none and (('Процент' in row[0] and row[1] > 50) and ('превышение' in row[0] or 'отклонение' in row[0]) and row[1] > 0) %}
+                            warning
+                            {% elif line.has_progress and row[1] is not none and 'Процент' in row[0] and row[1] > 0 %}
+                            info
+                            {% endif %}">
+                            
+                            <div class="report-card-header">
+                                <h3>{{ row[0] }}</h3>
+                                {% if line.has_progress and 'Процент' in row[0] %}
+                                <div class="progress-circle" data-value="{{ row[1] if row[1] is not none else 0 }}">
+                                    <svg viewBox="0 0 36 36" class="circular-chart">
+                                        <path class="circle-bg"
+                                            d="M18 2.0845
+                                            a 15.9155 15.9155 0 0 1 0 31.831
+                                            a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        />
+                                        <path class="circle"
+                                            stroke-dasharray="{{ row[1] if row[1] is not none else 0 }}, 100"
+                                            d="M18 2.0845
+                                            a 15.9155 15.9155 0 0 1 0 31.831
+                                            a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        />
+                                        <text x="18" y="20.35" class="percentage">{{ row[1] if row[1] is not none else 'N/A' }}</text>
+                                    </svg>
+                                </div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="report-card-value">
+                                {{ row[1] if row[1] is not none else 'N/A' }}
+                                {% if line.unit and not 'Процент' in row[0] %}
+                                <span class="unit">{{ line.unit }}</span>
+                                {% endif %}
+                            </div>
+                            
+                            {% if row[2] %}
+                            <div class="report-card-details">
+                                <i class="fas fa-info-circle"></i> {{ row[2] }}
+                            </div>
+                            {% endif %}
+                            
+                            {% if line.has_warning and row[1] is not none and ('Процент' in row[0] and row[1] > 50 and ('превышение' in row[0] or 'отклонение' in row[0]) and row[1] > 0) %}
+                            <div class="report-card-alert">
+                                <i class="fas fa-exclamation-triangle"></i> Требуется внимание!
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div id="charts" class="tab-content">
+            <h2><i class="fas fa-chart-bar"></i> Визуализация отклонений</h2>
+            <div class="grid-charts">
+                <div class="chart-container">
+                    <canvas id="distChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="lengthChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="diameterChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="angleChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="azimuthChart"></canvas>
+                </div>
+            </div>
+        </div>
+                
+        <div id="boreholes" class="tab-content">
+            <h2><i class="fas fa-list"></i> Список скважин в блоке</h2>
+            <div class="search-box">
+                <input type="text" id="borehole-search" placeholder="Поиск скважины...">
+            </div>
+            <div class="boreholes-grid">
+                {% for borehole in boreholes %}
+                <a href="/borehole/{{ block_id }}/{{ borehole.name }}" class="borehole-card">
+                    <div class="borehole-name">{{ borehole.name }}</div>
+                    <div class="borehole-status">Статус: 
+                        <span class="{% if borehole.active %}status-active{% else %}status-inactive{% endif %}">
+                            {% if borehole.active %}Активна{% else %}Неактивна{% endif %}
+                        </span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div id="critical" class="tab-content">
+            <h2><i class="fas fa-exclamation-triangle"></i> Критические отклонения</h2>
+            <div id="critical-deviations-container">
+            </div>
+        </div>
+
+        <div id="drilling-grid" class="tab-content">
+            <h2><i class="fas fa-project-diagram"></i> Буровая сетка</h2>
+            <div class="grid-container">
+                <canvas id="drillingGridChart"></canvas>
+            </div>
+        </div>
+
+        <div id="model-3d" class="tab-content">
+            <h2><i class="fas fa-cube"></i> 3D модель блока {{ block_name }}</h2>
+            <div class="model-container">
+                <div id="container-3d-model"></div>
+                
+                <div id="info-panel">
+                    <h2>Параметры блока</h2>
+                    <div id="block-info"></div>
+                    <div id="selected-hole"></div>
+                </div>
+                
+                <div id="controls">
+                    <h3>Панель управления картой</h3>
+                    <div>
+                        <label>
+                            <input type="checkbox" id="show-planned" checked> Плановые скважины
+                        </label>
+                    </div>
+                    <div>
+                        <label>
+                            <input type="checkbox" id="show-actual" checked> Фактические скважины
+                        </label>
+                    </div>
+                    <div>
+                        <label>
+                            <input type="checkbox" id="show-relief" checked> Рельеф
+                        </label>
+                    </div>
+                    <div>
+                        <label>Толщина скважины: <input type="range" id="scale-slider" min="1" max="20" value="10"></label>
+                    </div>
+                    <div>
+                        <button id="reset-view">Сброс вида</button>
+                    </div>
+                    
+                    <h3>Легенда карты</h3>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #1E90FF;"></div>
+                        <span>Плановые скважины</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #FF4500;"></div>
+                        <span>Фактические скважины</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #2E8B57;"></div>
+                        <span>Рельеф</span>
+                    </div>
+                </div>
+
+                <div class="tooltip" id="tooltip"></div>
+            </div>
+        </div>
+
+    <script>
+        const blockId = '{{ block_id }}';
+        const blockName = '{{ block_name }}';
+
+        // Main application
+        class BoreholeVisualizer {
+            constructor() {
+                this.blockId = blockId;
+
+                this.initScene();
+                this.initControls();
+                this.initEventListeners();
+                this.loadData();
+                this.animate();
+
+                this.highlightedHole = null;
+                this.originalMaterials = new Map();
+
+                this.camera.position.set(0, 0, 500);
+                this.controls.target.set(0, 0, 0);
+                this.controls.update();
+            }
+
+            initScene() {
+                // Scene
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0xf0f0f0);
+                const centerMarker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.5, 16, 16),
+                    new THREE.MeshBasicMaterial({color: 0x666666})
+                );
+                this.scene.add(centerMarker);
+                
+                // Camera
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+                this.camera.position.set(0, 0, 500);
+                
+                // Renderer
+                // this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                // this.renderer.setSize(window.innerWidth, window.innerHeight);
+                // this.renderer.setPixelRatio(window.devicePixelRatio);
+                // document.getElementById('container-3d-model').appendChild(this.renderer.domElement);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                const container = document.getElementById('container-3d-model');
+                this.renderer.setSize(container.clientWidth, container.clientHeight);
+                container.appendChild(this.renderer.domElement);
+                
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0x404040);
+                this.scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(1, 1, 1);
+                this.scene.add(directionalLight);
+                
+                // Grid helper
+                const gridHelper = new THREE.GridHelper(300, 30);
+                this.scene.add(gridHelper);
+                
+                // Axes helper
+                const axesHelper = new THREE.AxesHelper(100);
+                this.scene.add(axesHelper);
+                
+                // Data containers
+                this.boreholes = [];
+                this.reliefItems = [];
+                this.boreholeMeshes = [];
+                this.reliefMeshes = [];
+                this.blockInfo = null;
+                
+                // Tooltip
+                this.tooltip = document.getElementById('tooltip');
+                this.raycaster = new THREE.Raycaster();
+                this.mouse = new THREE.Vector2();
+                
+                // Scale factor for boreholes
+                this.boreholeScale = 10;
+            }
+
+            initControls() {
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.controls.dampingFactor = 0.05;
+            }
+
+            initEventListeners() {
+                window.addEventListener('resize', () => this.onWindowResize(), false);
+                window.addEventListener('mousemove', (e) => this.onMouseMove(e), false);
+                window.addEventListener('click', (e) => this.onClick(e), false);
+                
+                document.getElementById('show-planned').addEventListener('change', () => this.updateVisualization());
+                document.getElementById('show-actual').addEventListener('change', () => this.updateVisualization());
+                document.getElementById('show-relief').addEventListener('change', () => this.updateVisualization());
+                document.getElementById('scale-slider').addEventListener('input', (e) => {
+                    this.boreholeScale = parseInt(e.target.value);
+                    this.updateVisualization();
+                });
+                
+                document.getElementById('reset-view').addEventListener('click', () => this.resetView());
+            }
+
+            async loadData() {
+                try {
+                    // Load block info
+                    const blockResponse = await fetch(`/api/block/${this.blockId}/info`);
+                    const blocks = await blockResponse.json();
+                    console.log("blocks")
+                    console.log(blocks)
+                    if (blocks && blocks.length > 0) {
+                        this.blockInfo = blocks[0];
+                        this.updateBlockInfo();
+                    }
+                    
+                    // Load boreholes
+                    const boreholesResponse = await fetch(`/api/block/${this.blockId}/boreholes`);
+                    const boreholes = await boreholesResponse.json()
+                    console.log("boreholesResponse")
+                    console.log(boreholes)
+                    this.boreholes = (boreholes).map(hole => {
+                        const safeParse = (val) => val === null || val === undefined ? 0 : parseFloat(val);
+                        
+                        return {
+                            ...hole,
+                            X: safeParse(hole.X),
+                            Y: safeParse(hole.Y),
+                            Z: safeParse(hole.Z),
+                            Length: safeParse(hole.Length),
+                            Diameter: safeParse(hole.Diameter),
+                            Angle: safeParse(hole.Angle || 0),
+                            Azimuth: safeParse(hole.Azimuth || 0),
+                            T: parseInt(hole.T) || 0,
+                            CrushEnergy: hole.CrushEnergy ? parseFloat(hole.CrushEnergy) : null
+                        };
+                    });
+
+                    if (this.boreholes.length > 0) {
+                        let sumX = 0, sumY = 0, sumZ = 0;
+                        this.boreholes.forEach(hole => {
+                            sumX += hole.X;
+                            sumY += hole.Y;
+                            sumZ += hole.Z;
+                        });
+                        this.centerOffset = {
+                            x: sumX / this.boreholes.length,
+                            y: sumY / this.boreholes.length,
+                            z: sumZ / this.boreholes.length
+                        };
+                        // console.log("First borehole coordinates:", {
+                        //     X: this.boreholes[0].X,
+                        //     Y: this.boreholes[0].Y,
+                        //     Z: this.boreholes[0].Z,
+                        //     Offset: this.centerOffset
+                        // });
+                    }
+                    
+                    // Load relief
+                    const reliefResponse = await fetch(`/api/block/${this.blockId}/relief`);
+                    const relief = await reliefResponse.json()
+                    console.log("reliefResponse")
+                    console.log(relief)
+                    this.reliefItems = (relief).map(item => ({
+                        ...item,
+                        points: item.points.map(p => ({
+                            x: parseFloat(p.X) || 0,
+                            y: parseFloat(p.Y) || 0,
+                            z: parseFloat(p.Z) || 0
+                        }))
+                    }));
+                    
+                    // Visualize data
+                    this.updateVisualization();
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                }
+            }
+
+            updateBlockInfo() {
+                if (!this.blockInfo) return;
+                
+                const blockInfoDiv = document.getElementById('block-info');
+                console.log(this.blockInfo)
+                // blockInfoDiv.innerHTML = `
+                //     <h3>Блок скважин: ${this.blockInfo.BlockName}</h3>
+                //     <p><strong>Линия горизонта:</strong> ${this.blockInfo.HorizonName}</p>
+                //     <p><strong>Верхний уровень:</strong> ${this.blockInfo.TopLevel} м</p>
+                //     <p><strong>Количество скважин:</strong> ${this.blockInfo.HolesNumber} шт</p>
+                //     <p><strong>Суммарная длина скважин:</strong> ${this.blockInfo.TotalHolesLength} м</p>
+                //     <p><strong>Энергия дробления:</strong> ${this.blockInfo.CrushEnergy ? Number(this.blockInfo.CrushEnergy).toFixed(2) : 'N/A'} МДж/куб.м</p>
+                //     <p><strong>Шаг между скважинами/рядами::</strong> ${this.blockInfo.HolesSpace} м / ${this.blockInfo.RowsDistance} м</p>
+                //     <p><strong>Название породы:</strong> ${this.blockInfo.RockName} </p>
+                //     <p><strong>Жесткость породы:</strong> ${this.blockInfo.RockRigity} </p>
+                //     <p><strong>Плотность породы:</strong> ${this.blockInfo.RockDensity} </p>
+                // `;
+                blockInfoDiv.innerHTML = `
+                    <p><strong>Линия горизонта:</strong> ${this.blockInfo.HorizonName}</p>
+                    <p><strong>Верхний уровень:</strong> ${this.blockInfo.TopLevel} м</p>
+                    <p><strong>Количество скважин:</strong> ${this.blockInfo.HolesNumber} шт</p>
+                    <p><strong>Суммарная длина скважин:</strong> ${this.blockInfo.TotalHolesLength} м</p>
+                `;
+            }
+
+            updateVisualization() {
+                // Clear previous meshes
+                this.boreholeMeshes.forEach(mesh => this.scene.remove(mesh));
+                this.reliefMeshes.forEach(mesh => this.scene.remove(mesh));
+                this.boreholeMeshes = [];
+                this.reliefMeshes = [];
+                
+                // Visualize boreholes
+                this.updateBoreholeVisuals();
+                
+                // Visualize relief
+                if (document.getElementById('show-relief').checked) {
+                    this.createReliefVisuals();
+                }
+            }
+
+            updateBoreholeVisuals() {
+                const showPlanned = document.getElementById('show-planned').checked;
+                const showActual = document.getElementById('show-actual').checked;
+                
+                this.boreholes.forEach(hole => {
+                    const shouldShow = (hole.T === 2 && showPlanned) || (hole.T === 3 && showActual);
+                    
+                    if (shouldShow) {
+                        const color = hole.T === 2 ? 0x1E90FF : 0xFF4500;
+                        const holeMesh = this.createBoreholeMesh(hole, color);
+                        this.scene.add(holeMesh);
+                        this.boreholeMeshes.push(holeMesh);
+                    }
+                });
+            }
+
+            createBoreholeMesh(hole, color) {
+                const group = new THREE.Group();
+
+                const X = (isNaN(hole.X)) ? 0 : hole.X - (this.centerOffset?.x || 0);
+                const Y = (isNaN(hole.Z)) ? 0 : hole.Z - (this.centerOffset?.z || 0);
+                const Z = (isNaN(hole.Y)) ? 0 : hole.Y - (this.centerOffset?.y || 0);
+                const Diameter = isNaN(hole.Diameter) ? 0.1 : hole.Diameter;
+
+                // console.log(`Creating borehole at: X=${X}, Y=${Y}, Z=${Z}, Length=${Length}, Diameter=${Diameter}`);
+                if (Math.abs(X) > 1000 || Math.abs(Y) > 1000 || Math.abs(Z) > 1000) {
+                    console.warn("Suspicious coordinates:", hole);
+                }
+                
+                // Calculate end point based on length, angle and azimuth
+                const angleRad = THREE.MathUtils.degToRad(hole.Angle || 0);
+                const azimuthRad = THREE.MathUtils.degToRad(hole.Azimuth || 0);
+                
+                const lengthX = hole.Length * Math.sin(angleRad) * Math.cos(azimuthRad);
+                const lengthY = -hole.Length * Math.cos(angleRad); // вертикальная компонента
+                const lengthZ = hole.Length * Math.sin(angleRad) * Math.sin(azimuthRad);
+                
+                const endX = X + lengthX;
+                const endY = Y + lengthY;
+                const endZ = Z + lengthZ;
+                
+                // Create line for the borehole
+                const material = new THREE.LineBasicMaterial({ 
+                    color: color,
+                    linewidth: 100
+                });
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(X, Y, Z),
+                    new THREE.Vector3(endX, endY, endZ)
+                ]);
+                const line = new THREE.Line(geometry, material);
+                
+                // Add start point marker (larger)
+                const startGeometry = new THREE.SphereGeometry(Diameter * this.boreholeScale * 0.2, 16, 16);
+                const startMaterial = new THREE.MeshBasicMaterial({ color: color });
+                const startSphere = new THREE.Mesh(startGeometry, startMaterial);
+                startSphere.position.set(X, Y, Z);
+                
+                // Add end point marker (smaller)
+                const endGeometry = new THREE.SphereGeometry(hole.Diameter * this.boreholeScale * 0.05, 16, 16);
+                const endMaterial = new THREE.MeshBasicMaterial({ color: color });
+                const endSphere = new THREE.Mesh(endGeometry, endMaterial);
+                endSphere.position.set(endX, endY, endZ);
+                
+                // Add to group
+                group.add(line);
+                group.add(startSphere);
+                group.add(endSphere);
+                
+                // Store hole data for interaction
+                group.userData = { 
+                    hole: hole,
+                    type: 'borehole',
+                    tooltip: `Скважина: ${hole.Name}<br>
+                            Тип: ${hole.T === 2 ? 'Плановая' : 'Фактическая'}<br>
+                            Координаты: (${hole.X.toFixed(2)}, ${hole.Y.toFixed(2)}, ${hole.Z.toFixed(2)})<br>
+                            Длина: ${hole.Length.toFixed(2)} м<br>
+                            Диаметр: ${hole.Diameter.toFixed(2)} м<br>
+                            Угол: ${hole.Angle.toFixed(2)}°<br>
+                            Азимут: ${hole.Azimuth.toFixed(2)}°`,
+                    originalColor: color,
+                    lineObject: line,
+                    startSphere: startSphere,
+                    endSphere: endSphere
+                };
+                
+                return group;
+            }
+
+            createReliefVisuals() {
+                this.reliefItems.forEach(item => {
+                    if (item.points && item.points.length > 0) {
+                        const reliefMesh = this.createReliefMesh(item);
+                        this.scene.add(reliefMesh);
+                        this.reliefMeshes.push(reliefMesh);
+                    }
+                });
+            }
+
+            createReliefMesh(item) {
+                const lineColor = 0x2E8B57;
+                const aboveColor = 0x90EE90;
+                const belowColor = 0xFFA07A;
+                const opacity = 0.5;
+                const lineMaterial = new THREE.LineBasicMaterial({ color: lineColor });
+                
+                // Convert points to Vector3
+                const points = item.points.map(p => new THREE.Vector3(
+                    (p.x || 0) - (this.centerOffset?.x || 0),
+                    (p.z || 0) - (this.centerOffset?.z || 0),
+                    (p.y || 0) - (this.centerOffset?.y || 0)
+                ));
+                
+                // Create line
+                const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(lineGeometry, lineMaterial);
+
+                if (points.length >= 3) {
+                    const shape = new THREE.Shape();
+                    shape.moveTo(points[0].x, points[0].z);
+                    for (let i = 1; i < points.length; i++) {
+                        shape.lineTo(points[i].x, points[i].z);
+                    }
+
+                    // цвет в зависимости от средней Z-координаты
+                    const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+                    const fillColor = avgY >= 0 ? aboveColor : belowColor;
+
+                    const shapeGeometry = new THREE.ShapeGeometry(shape);
+                    const fillMaterial = new THREE.MeshBasicMaterial({
+                        color: fillColor,
+                        transparent: true,
+                        opacity: opacity,
+                        side: THREE.DoubleSide
+                    });
+
+                    const fillMesh = new THREE.Mesh(shapeGeometry, fillMaterial);
+                    fillMesh.position.set(0, avgY, 0);
+                    fillMesh.rotation.x = +Math.PI / 2;
+
+                    const group = new THREE.Group();
+                    group.add(line);
+                    group.add(fillMesh);
+
+                    group.userData = {
+                        type: 'relief',
+                        tooltip: `Relief Line<br>Points: ${item.points.length}<br>Z Level: ${item.Z_Level || 'N/A'}`
+                    };
+
+                    return group;
+                }
+
+                line.userData = {
+                    type: 'relief',
+                    tooltip: `Relief Line<br>Points: ${item.points.length}<br>Z Level: ${item.Z_Level || 'N/A'}`
+                };
+                return line;
+            }
+
+            onMouseMove(event) {
+                // Calculate mouse position in normalized device coordinates
+                const container = document.getElementById('container-3d-model');
+                const rect = container.getBoundingClientRect();
+                
+                this.mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+                this.mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+                
+                // Update the raycaster
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                
+                // Calculate objects intersecting the picking ray
+                const intersects = this.raycaster.intersectObjects([...this.boreholeMeshes, ...this.reliefMeshes], true);
+
+                // Убрать выделение с предыдущей скважины
+                if (this.highlightedHole) {
+                    const userData = this.highlightedHole.userData;
+                    if (userData.lineObject) {
+                        userData.lineObject.material.color.setHex(userData.originalColor);
+                        userData.lineObject.material.linewidth = 2;
+                    }
+                    if (userData.startSphere) {
+                        userData.startSphere.material.color.setHex(userData.originalColor);
+                    }
+                    if (userData.endSphere) {
+                        userData.endSphere.material.color.setHex(userData.originalColor);
+                    }
+                    this.highlightedHole = null;
+                }
+                
+                if (intersects.length > 0) {
+                    let object = intersects[0].object;
+                    while (object.parent && !object.userData.tooltip) {
+                        object = object.parent;
+                    }
+                    
+                    if (object.userData && object.userData.tooltip && object.userData.type === 'borehole') {
+                        // Выделить скважину
+                        const userData = object.userData;
+                        const highlightColor = 0xFFFFFF;
+                        
+                        if (userData.lineObject) {
+                            userData.lineObject.material.color.setHex(highlightColor);
+                            userData.lineObject.material.linewidth = 5;
+                        }
+                        if (userData.startSphere) {
+                            userData.startSphere.material.color.setHex(highlightColor);
+                        }
+                        if (userData.endSphere) {
+                            userData.endSphere.material.color.setHex(highlightColor);
+                        }
+                        this.highlightedHole = object;
+                        
+                        // Показать tooltip
+                        this.tooltip.style.display = 'block';
+                        this.tooltip.style.left = (event.clientX + 10) + 'px';
+                        this.tooltip.style.top = (event.clientY + 10) + 'px';
+                        this.tooltip.innerHTML = userData.tooltip;
+
+                        this.updateSelectedHoleInfo(userData.hole);
+                        
+                        return; // Прерываем выполнение, чтобы не скрывать tooltip
+                    }
+                }
+
+                this.tooltip.style.display = 'none';
+            }
+
+            updateSelectedHoleInfo(hole) {
+                const selectedHoleDiv = document.getElementById('selected-hole');
+                selectedHoleDiv.innerHTML = `
+                    <h3>Скважина: ${hole.Name}</h3>
+                    <p><strong>Тип:</strong> ${hole.T === 2 ? 'плановая' : 'фактическая'}</p>
+                    <p><strong>Координаты:</strong> X=${hole.X.toFixed(2)}, Y=${hole.Y.toFixed(2)}, Z=${hole.Z.toFixed(2)}</p>
+                    <p><strong>Длина:</strong> ${hole.Length.toFixed(2)} м</p>
+                    <p><strong>Диаметр:</strong> ${hole.Diameter.toFixed(2)} м</p>
+                    <p><strong>Угол:</strong> ${hole.Angle.toFixed(2)}°</p>
+                    <p><strong>Азимут:</strong> ${hole.Azimuth.toFixed(2)}°</p>
+                    <p><strong>Энергия дробления:</strong> ${hole.CrushEnergy ? hole.CrushEnergy.toFixed(2) : 'N/A'} МДж/куб.м</p>
+                `;
+            }
+
+            onClick(event) {
+                // Calculate mouse position in normalized device coordinates
+                const container = document.getElementById('container-3d-model');
+                const rect = container.getBoundingClientRect();
+
+                this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+                
+                // Update the raycaster
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                
+                // Calculate objects intersecting the picking ray
+                const intersects = this.raycaster.intersectObjects(this.boreholeMeshes, true);
+                
+                if (intersects.length > 0) {
+                    let object = intersects[0].object;
+                    while (object.parent && !object.userData.hole) {
+                        object = object.parent;
+                    }
+                    
+                    if (object.userData && object.userData.hole) {
+                        this.updateSelectedHoleInfo(object.userData.hole);
+                    }
+                }
+            }
+
+            onWindowResize() {
+                const container = document.getElementById('container-3d-model');
+                this.camera.aspect = container.clientWidth / container.clientHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+
+            resetView() {
+                this.camera.position.set(0, 0, 500);
+                this.controls.target.set(0, 0, 0);
+                this.controls.update();
+            }
+
+            fitToView() {
+                if (this.boreholeMeshes.length === 0) return;
+                
+                const boundingBox = new THREE.Box3();
+                
+                // Include all borehole meshes in bounding box calculation
+                try {
+                    this.boreholeMeshes.forEach(mesh => {
+                        mesh.traverse(child => {
+                            if (child.geometry) {
+                                // Проверяем атрибуты перед вычислением
+                                const position = child.geometry.attributes.position;
+                                if (position) {
+                                    for (let i = 0; i < position.count; i++) {
+                                        const x = position.getX(i);
+                                        const y = position.getY(i);
+                                        const z = position.getZ(i);
+                                        if (isNaN(x)) position.setX(i, 0);
+                                        if (isNaN(y)) position.setY(i, 0);
+                                        if (isNaN(z)) position.setZ(i, 0);
+                                    }
+                                    child.geometry.computeBoundingBox();
+                                    boundingBox.union(child.geometry.boundingBox);
+                                }
+                            }
+                        });
+                    });
+                
+                    // Include relief if visible
+                    if (document.getElementById('show-relief').checked) {
+                        this.reliefMeshes.forEach(mesh => {
+                            if (mesh.geometry) {
+                                mesh.geometry.computeBoundingBox();
+                                boundingBox.union(mesh.geometry.boundingBox);
+                            }
+                        });
+                    }
+                    
+                    if (!boundingBox.isEmpty()) {
+                        const center = boundingBox.getCenter(new THREE.Vector3());
+                        const size = boundingBox.getSize(new THREE.Vector3());
+
+                        if (this.centerOffset) {
+                            center.x -= this.centerOffset.x;
+                            center.y -= this.centerOffset.y;
+                            center.z -= this.centerOffset.z;
+                        }
+                        
+                        // Calculate the max dimension of the bounding box
+                        const maxDim = Math.max(size.x, size.y, size.z);
+                        const fov = this.camera.fov * (Math.PI / 180);
+                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2));
+                        
+                        // Add some padding
+                        cameraZ *= 1.5;
+                        
+                        this.camera.position.set(center.x, center.y - cameraZ, center.z + cameraZ * 0.5);
+                        this.controls.target.copy(center);
+                        this.controls.update();
+                    }
+                } catch (e) {
+                    console.error("Error in fitToView:", e);
+                }
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                this.controls.update();
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        // Initialize the application when the page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            window.BoreholeVisualizer = BoreholeVisualizer;
+            // new BoreholeVisualizer();
+        });
+
+        const chartsData = JSON.parse('{{ charts_data | safe }}');
+
+        // Функция для создания столбчатой диаграммы
+        function createBarChart(ctx, title, data, label, backgroundColor) {
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.map(item => item.name),
+                    datasets: [{
+                        label: label,
+                        data: data.map(item => item.diff || item.deviation),
+                        backgroundColor: backgroundColor,
+                        borderColor: backgroundColor,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: title
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function openTab(tabName) {
+            const tabContents = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove("active");
+            }
+            
+            const tabButtons = document.getElementsByClassName("tab-btn");
+            for (let i = 0; i < tabButtons.length; i++) {
+                tabButtons[i].classList.remove("active");
+            }
+            
+            document.getElementById(tabName).classList.add("active");
+            event.currentTarget.classList.add("active");
+        }
+
+        // Критические отклонения
+        const criticalDeviations = JSON.parse('{{ critical_deviations | safe }}');
+
+        function renderCriticalDeviations() {
+            const container = document.getElementById('critical-deviations-container');
+            const sections = [
+                { 
+                    key: 'dist', 
+                    title: 'Координаты (отклонение > 5м)', 
+                    icon: 'fa-map-marker-alt',
+                    unit: 'м'
+                },
+                { 
+                    key: 'length', 
+                    title: 'Глубина (отклонение > 10%)', 
+                    icon: 'fa-ruler-vertical',
+                    unit: 'м' 
+                },
+                { 
+                    key: 'diameter', 
+                    title: 'Диаметр (отклонение > 10%)', 
+                    icon: 'fa-circle',
+                    unit: 'м' 
+                },
+                { 
+                    key: 'angle', 
+                    title: 'Угол (отклонение > 10%)', 
+                    icon: 'fa-compass',
+                    unit: '°' 
+                },
+                { 
+                    key: 'azimuth', 
+                    title: 'Азимут (отклонение > 10%)', 
+                    icon: 'fa-compass',
+                    unit: '°' 
+                }
+            ];
+
+            const html = sections
+                .filter(section => criticalDeviations[section.key]?.length > 0)
+                .map(section => `
+                    <div class="critical-section">
+                        <h3><i class="fas ${section.icon}"></i> ${section.title}</h3>
+                        <div class="critical-items">
+                            ${criticalDeviations[section.key].map(item => `
+                                <div class="critical-item">
+                                    <span class="critical-name">${item.name}</span>
+                                    <span class="critical-value">${item.diff} ${section.unit}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('');
+
+            container.innerHTML = html || '<p>Критических отклонений не обнаружено</p>';
+        }
+
+        document.getElementById('export-btn').addEventListener('click', async () => {
+            try {
+                const { value: format } = await Swal.fire({
+                    title: 'Экспорт отчета',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'pdf',
+                    cancelButtonText: 'Отмена'
+                });
+
+                if (!format) return;
+
+                const swalInstance = Swal.fire({
+                    title: 'Подготовка отчета...',
+                    html: 'Пожалуйста, подождите',
+                    allowOutsideClick: false,
+                    didOpen: async () => {
+                        Swal.showLoading();
+                        
+                        try {
+                            await Promise.all([
+                                loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+                                loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
+                                loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js')
+                            ]);
+                            
+                            const exportContainer = document.createElement('div');
+                            exportContainer.style.width = '100%';
+                            
+                            const headerClone = document.querySelector('h1').cloneNode(true);
+                            const blockInfoClone = document.querySelector('.block-info-section').cloneNode(true);
+                            const metricsClone = document.querySelector('.metrics-cards').cloneNode(true);
+                            
+                            const activeTabClone = document.querySelector('.tab-content.active').cloneNode(true);
+                            
+                            exportContainer.appendChild(headerClone);
+                            exportContainer.appendChild(blockInfoClone);
+                            exportContainer.appendChild(metricsClone);
+                            exportContainer.appendChild(activeTabClone);
+                            
+                            document.body.appendChild(exportContainer);
+                            
+                            const opt = {
+                                margin: [10, 10, 10, 10],
+                                filename: `Отчет_блок_${'{{ block_id }}'}.pdf`,
+                                image: { 
+                                    type: 'jpeg', 
+                                    quality: 0.98,
+                                },
+                                html2canvas: { 
+                                    scale: 3,
+                                    logging: false,
+                                    useCORS: true,
+                                    allowTaint: true,
+                                    letterRendering: true,
+                                    scrollX: 0,
+                                    scrollY: 0,
+                                },
+                                jsPDF: { 
+                                    unit: 'mm', 
+                                    format: 'a4', 
+                                    orientation: 'portrait',
+                                    compress: true,
+                                    hotfixes: ["px_scaling"]
+                                },
+                                pagebreak: { 
+                                    mode: 'avoid-all',
+                                    before: '.page-break-before',
+                                    after: '.page-break-after',
+                                    avoid: '.report-card, .metric-card, .chart-container'
+                                }
+                            };
+                            
+                            // @ts-ignore
+                            await html2pdf().set(opt).from(exportContainer).save();
+                            document.body.removeChild(exportContainer);
+                            
+                            swalInstance.close();
+                            Swal.fire({
+                                title: 'Готово!',
+                                text: 'Отчет успешно экспортирован',
+                                icon: 'success'
+                            });
+                        } catch (err) {
+                            console.error('Ошибка экспорта:', err);
+                            throw err;
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error('Ошибка:', err);
+                Swal.fire({
+                    title: 'Ошибка!',
+                    text: 'Не удалось экспортировать отчет',
+                    icon: 'error'
+                });
+            }
+        });
+
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        function renderDrillingGrid() {
+            const ctx = document.getElementById('drillingGridChart').getContext('2d');
+            
+            const plannedData = {
+                type: 'scatter',
+                label: 'План',
+                data: {{ planned_grid_data | safe }},
+                backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                pointRadius: 6
+            };
+            
+            const actualData = {
+                type: 'scatter',
+                label: 'Факт',
+                data: {{ actual_grid_data | safe }},
+                backgroundColor: 'rgba(255, 99, 132, 0.8)',
+                pointRadius: 6
+            };
+            
+            window.drillingGridChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [plannedData, actualData]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'X координата'
+                            }
+                                            },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Y координата'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const data = context.dataset.data[context.dataIndex];
+                                    return [
+                                        `Скважина: ${data.name}`,
+                                        `${context.dataset.label}: (${context.parsed.x}, ${context.parsed.y})`
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function showGrid(type) {
+            const buttons = document.querySelectorAll('.grid-toggle-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            
+            if (window.drillingGridChart) {
+                window.drillingGridChart.data.datasets.forEach(dataset => {
+                    dataset.pointRadius = 0;
+                });
+                
+                if (type === 'planned') {
+                    window.drillingGridChart.data.datasets[0].pointRadius = 6;
+                } else if (type === 'actual') {
+                    window.drillingGridChart.data.datasets[1].pointRadius = 6;
+                } else {
+                    window.drillingGridChart.data.datasets[0].pointRadius = 6;
+                                window.drillingGridChart.data.datasets[1].pointRadius = 6;
+                }
+                
+                window.drillingGridChart.update();
+            }
+        }
+
+        // Поиск скважин
+        document.getElementById('borehole-search').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const cards = document.querySelectorAll('.borehole-card');
+            
+            cards.forEach(card => {
+                const name = card.querySelector('.borehole-name').textContent.toLowerCase();
+                card.style.display = name.includes(searchTerm) ? 'block' : 'none';
+            });
+        });
+
+        document.querySelector('.btn-back').addEventListener('click', function(e) {
+            window.location.href = '/';
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            renderCriticalDeviations();
+            renderDrillingGrid();
+
+            const distCtx = document.getElementById('distChart').getContext('2d');
+            createBarChart(distCtx, 'Отклонения координат (м)', chartsData.dist_deviations, 'Отклонение', 'rgba(54, 162, 235, 0.6)');
+
+            const lengthCtx = document.getElementById('lengthChart').getContext('2d');
+            createBarChart(lengthCtx, 'Отклонения глубины (м)', chartsData.length_deviations, 'Разница', 'rgba(255, 99, 132, 0.6)');
+
+            const diameterCtx = document.getElementById('diameterChart').getContext('2d');
+            createBarChart(diameterCtx, 'Отклонения диаметра (м)', chartsData.diameter_deviations, 'Разница', 'rgba(75, 192, 192, 0.6)');
+
+            const angleCtx = document.getElementById('angleChart').getContext('2d');
+            createBarChart(angleCtx, 'Отклонения угла наклона (град)', chartsData.angle_deviations, 'Разница', 'rgba(153, 102, 255, 0.6)');
+
+            const azimuthCtx = document.getElementById('azimuthChart').getContext('2d');
+            createBarChart(azimuthCtx, 'Отклонения азимута (град)', chartsData.azimuth_deviations, 'Разница', 'rgba(255, 159, 64, 0.6)');
+            
+            let modelInitialized = false;
+            const modelTab = document.querySelector('.tab-btn[onclick="openTab(\'model-3d\')"]');
+            
+            modelTab.addEventListener('click', function() {
+                if (!modelInitialized) {
+                    new BoreholeVisualizer();
+                    modelInitialized = true;
+                }
+            });
+            
+            // Показать предупреждение, если есть критические отклонения
+            const hasCritical = Object.values(criticalDeviations).some(arr => arr.length > 0);
+            if (hasCritical) {
+                Swal.fire({
+                    title: 'Внимание!',
+                    html: 'Обнаружены критические отклонения. Проверьте вкладку <b>"Критические отклонения"</b>.',
+                    icon: 'warning',
+                    confirmButtonText: 'Понятно'
+                });
+            }
+        });
+    </script>
+</body>
+</html>
