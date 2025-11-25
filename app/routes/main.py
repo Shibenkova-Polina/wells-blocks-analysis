@@ -1,5 +1,4 @@
-from flask import Blueprint, render_template, request, redirect
-from app.utils.validators import validate_block_input
+from flask import Blueprint, render_template
 
 main_bp = Blueprint('main', __name__)
 
@@ -80,3 +79,22 @@ def get_block_relief(block_id):
 def get_borehole_details(block_id, borehole_name):
     from app.routes.boreholes import get_borehole_details_data
     return get_borehole_details_data(block_id, borehole_name)
+
+# Маршруты для экспорта
+@main_bp.route('/api/export/<report_type>/<format_type>')
+def export_report(report_type, format_type):
+    """Экспорт отчета в указанном формате"""
+    from app.routes.export import export_report as export_handler
+    return export_handler(report_type, format_type)
+
+@main_bp.route('/api/export/formats')
+def get_export_formats():
+    """Возвращает список поддерживаемых форматов"""
+    from app.routes.export import get_export_formats as export_formats
+    return export_formats()
+
+@main_bp.route('/api/export/block/<block_id>/<data_type>/<format_type>')
+def export_block_data(block_id, data_type, format_type):
+    """Экспорт данных конкретного блока"""
+    from app.routes.block_export import export_block_data as block_export_handler
+    return block_export_handler(block_id, data_type, format_type)

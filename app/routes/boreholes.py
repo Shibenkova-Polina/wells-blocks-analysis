@@ -1,11 +1,12 @@
 # boreholes.py
-from flask import Blueprint, render_template, jsonify, request
+from flask import Blueprint, render_template, jsonify
 import logging
-import os
 from dotenv import load_dotenv
-import psycopg2
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
+
+# Импортируем DatabaseManager
+from app.models.database import db_manager
 
 boreholes_bp = Blueprint('boreholes', __name__)
 
@@ -15,93 +16,83 @@ logger = logging.getLogger(__name__)
 # Загрузка переменных окружения
 load_dotenv(dotenv_path='config.env')
 
-def get_db_connection():
-    """Функция подключения к БД как в app.py"""
-    return psycopg2.connect(
-        host=os.getenv('DB_HOST'),
-        database=os.getenv('DB_NAME'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        port=os.getenv('DB_PORT', '5432')
-    )
-
 @boreholes_bp.route('/borehole/<block_id>/<borehole_name>')
 def get_borehole_details_data(block_id, borehole_name):
-    """Полная реализация страницы деталей скважины - как в app.py"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
+    """Полная реализация страницы деталей скважины"""
     try:
-        # Получение данных об отклонениях расстояния
-        dist_query = sql.SQL("""
-            SELECT * FROM public.calc_distance_deviations({}) 
-            WHERE borehole_name = {}
-        """).format(sql.Placeholder(), sql.Placeholder())
-        cursor.execute(dist_query, (block_id, borehole_name))
-        dist_data = cursor.fetchone()
+        # Используем DatabaseManager для выполнения запросов
+        dist_result = db_manager.execute_query("""
+            SELECT * FROM public.calc_distance_deviations(%s) 
+            WHERE borehole_name = %s
+        """, (block_id, borehole_name), cursor_factory=RealDictCursor)
+        
+        length_result = db_manager.execute_query("""
+            SELECT * FROM public.calc_length_deviations(%s) 
+            WHERE borehole_name = %s
+        """, (block_id, borehole_name), cursor_factory=RealDictCursor)
+        
+        diameter_result = db_manager.execute_query("""
+            SELECT * FROM public.calc_diameter_deviations(%s) 
+            WHERE borehole_name = %s
+        """, (block_id, borehole_name), cursor_factory=RealDictCursor)
+        
+        direction_result = db_manager.execute_query("""
+            SELECT * FROM public.calc_direction_deviations(%s) 
+            WHERE borehole_name = %s
+        """, (block_id, borehole_name), cursor_factory=RealDictCursor)
 
-        # Получение данных об отклонениях глубины
-        length_query = sql.SQL("""
-            SELECT * FROM public.calc_length_deviations({}) 
-            WHERE borehole_name = {}
-        """).format(sql.Placeholder(), sql.Placeholder())
-        cursor.execute(length_query, (block_id, borehole_name))
-        length_data = cursor.fetchone()
+        # Безопасное извлечение данных из результата запроса
+        def safe_get(data_list, field_name, default=None):
+            """Безопасно получает значение из списка данных по имени поля"""
+            if data_list and len(data_list) > 0:
+                value = data_list[0].get(field_name)
+                return value if value is not None else default
+            return default
 
-        # Получение данных об отклонениях диаметра
-        diameter_query = sql.SQL("""
-            SELECT * FROM public.calc_diameter_deviations({}) 
-            WHERE borehole_name = {}
-        """).format(sql.Placeholder(), sql.Placeholder())
-        cursor.execute(diameter_query, (block_id, borehole_name))
-        diameter_data = cursor.fetchone()
-
-        # Получение данных об отклонениях направления
-        direction_query = sql.SQL("""
-            SELECT * FROM public.calc_direction_deviations({}) 
-            WHERE borehole_name = {}
-        """).format(sql.Placeholder(), sql.Placeholder())
-        cursor.execute(direction_query, (block_id, borehole_name))
-        direction_data = cursor.fetchone()
-
-        cursor.close()
-        conn.close()
-
-        # Форматирование данных скважины как в app.py
+        # Определяем структуру полей для каждой функции
+        # На основе структуры возвращаемых данных из БД функций
+        
+        # Форматирование данных скважины с безопасным доступом
         borehole_data = {
             'name': borehole_name,
             'dist': {
-                'planned': (dist_data[1], dist_data[2]),
-                'actual': (dist_data[3], dist_data[4]),
-                'deviation': dist_data[5]
-            } if dist_data else None,
+                'planned': (safe_get(dist_result, 'planned_x', 0), safe_get(dist_result, 'planned_y', 0)),
+                'actual': (safe_get(dist_result, 'actual_x', 0), safe_get(dist_result, 'actual_y', 0)),
+                'deviation': safe_get(dist_result, 'deviation', 0)
+            } if dist_result and len(dist_result) > 0 else None,
             'length': {
-                'planned':  float(length_data[1]),
-                'actual':  float(length_data[2]),
-                'diff':  float(length_data[3]),
-                'useful_planned': length_data[4],
-                'useful_actual': length_data[5],
-                'useful_diff': length_data[6]
-            } if length_data else None,
+                'planned': float(safe_get(length_result, 'planned_length', 0)),
+                'actual': float(safe_get(length_result, 'actual_length', 0)),
+                'diff': float(safe_get(length_result, 'length_diff', 0)),
+                'useful_planned': safe_get(length_result, 'useful_length_planned'),
+                'useful_actual': safe_get(length_result, 'useful_length_actual'),
+                'useful_diff': safe_get(length_result, 'useful_length_diff')
+            } if length_result and len(length_result) > 0 else None,
             'diameter': {
-                'planned':  float(diameter_data[1]),
-                'actual':  float(diameter_data[2]),
-                'diff':  float(diameter_data[3]),
-                'overboring_planned': diameter_data[4],
-                'overboring_actual': diameter_data[5],
-                'overboring_diff': diameter_data[6]
-            } if diameter_data else None,
+                'planned': float(safe_get(diameter_result, 'planned_diameter', 0)),
+                'actual': float(safe_get(diameter_result, 'actual_diameter', 0)),
+                'diff': float(safe_get(diameter_result, 'diameter_diff', 0)),
+                'overboring_planned': safe_get(diameter_result, 'overboring_planned'),
+                'overboring_actual': safe_get(diameter_result, 'overboring_actual'),
+                'overboring_diff': safe_get(diameter_result, 'overboring_diff')
+            } if diameter_result and len(diameter_result) > 0 else None,
             'direction': {
-                'angle_planned': direction_data[1],
-                'angle_actual': direction_data[2],
-                'angle_diff': direction_data[3],
-                'azimuth_planned': direction_data[4],
-                'azimuth_actual': direction_data[5],
-                'azimuth_diff': direction_data[6]
-            } if direction_data else None
+                'angle_planned': safe_get(direction_result, 'planned_angle'),
+                'angle_actual': safe_get(direction_result, 'actual_angle'),
+                'angle_diff': safe_get(direction_result, 'angle_diff'),
+                'azimuth_planned': safe_get(direction_result, 'planned_azimuth'),
+                'azimuth_actual': safe_get(direction_result, 'actual_azimuth'),
+                'azimuth_diff': safe_get(direction_result, 'azimuth_diff')
+            } if direction_result and len(direction_result) > 0 else None
         }
 
         logger.info(f"Borehole details successfully loaded: {borehole_name} in block {block_id}")
+
+        # Для отладки выведем структуру данных
+        logger.info(f"Dist result keys: {list(dist_result[0].keys()) if dist_result and len(dist_result) > 0 else 'No data'}")
+        logger.info(f"Length result keys: {list(length_result[0].keys()) if length_result and len(length_result) > 0 else 'No data'}")
+        logger.info(f"Diameter result keys: {list(diameter_result[0].keys()) if diameter_result and len(diameter_result) > 0 else 'No data'}")
+        logger.info(f"Direction result keys: {list(direction_result[0].keys()) if direction_result and len(direction_result) > 0 else 'No data'}")
 
         return render_template('borehole.html',
                            block_id=block_id,
@@ -109,73 +100,61 @@ def get_borehole_details_data(block_id, borehole_name):
 
     except Exception as e:
         logger.error(f"Error loading borehole details for {borehole_name} in block {block_id}: {str(e)}")
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        return render_template('error.html', error_message=str(e)), 500
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Возвращаем шаблон с сообщением об ошибке
+        return render_template('borehole.html',
+                           block_id=block_id,
+                           borehole={'name': borehole_name},
+                           error_message=f"Ошибка загрузки данных: {str(e)}")
 
 @boreholes_bp.route('/api/block/<block_id>/boreholes', methods=['GET'])
 def get_boreholes_3D(block_id):
-    """Получение данных о скважинах для 3D визуализации - как в app.py"""
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
+    """Получение данных о скважинах для 3D визуализации"""
     try:
-        cursor.execute(sql.SQL("""
-            SELECT * FROM public."Boreholes3D" 
-            WHERE "BlockID" = {}
-        """).format(sql.Placeholder()), (block_id,))
-
-        boreholes = cursor.fetchall()
-        for hole in boreholes:
-            for field in ['X', 'Y', 'Z', 'Length', 'Diameter', 'Angle', 'Azimuth']:
-                if hole[field] is None:
-                    hole[field] = 0.0
+        result = db_manager.execute_query(
+            sql.SQL("SELECT * FROM public.\"Boreholes3D\" WHERE \"BlockID\" = {}").format(sql.Placeholder()), 
+            (block_id,),
+            cursor_factory=RealDictCursor
+        )
         
-        cursor.close()
-        conn.close()
-        return jsonify(boreholes)
-    
+        if result:
+            for hole in result:
+                for field in ['X', 'Y', 'Z', 'Length', 'Diameter', 'Angle', 'Azimuth']:
+                    if hole[field] is None:
+                        hole[field] = 0.0
+            
+            return jsonify(result)
+        return jsonify([])
     except Exception as e:
         logger.error(f"Error loading 3D boreholes data for block {block_id}: {str(e)}")
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
         return jsonify({'error': str(e)}), 500
 
 @boreholes_bp.route('/api/block/<block_id>/relief', methods=['GET'])
 def get_relief_3D(block_id):
-    """Получение данных о рельефе для 3D визуализации - как в app.py"""
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
+    """Получение данных о рельефе для 3D визуализации"""
     try:
-        cursor.execute(sql.SQL("""
-            SELECT "ItemID", "TID", "Z_Level" FROM public."ReliefItems"
-            WHERE "BlockID" = {}
-        """).format(sql.Placeholder()), (block_id,))
+        items_result = db_manager.execute_query(
+            sql.SQL("SELECT \"ItemID\", \"TID\", \"Z_Level\" FROM public.\"ReliefItems\" WHERE \"BlockID\" = {}").format(sql.Placeholder()),
+            (block_id,),
+            cursor_factory=RealDictCursor
+        )
         
-        items = cursor.fetchall() 
-        for item in items:
-            cursor.execute(sql.SQL("""
-                SELECT "X", "Y", "Z" FROM public."ReliefPoints" 
-                WHERE "ReliefItemID" = {}
-                ORDER BY "PointOrder"
-            """).format(sql.Placeholder()), (item['ItemID'],))
-            item['points'] = cursor.fetchall()
+        if not items_result:
+            return jsonify([])
         
-        cursor.close()
-        conn.close()
-        print('------------------------')
-        print(items)
+        items = []
+        for item in items_result:
+            points_result = db_manager.execute_query(
+                sql.SQL("SELECT \"X\", \"Y\", \"Z\" FROM public.\"ReliefPoints\" WHERE \"ReliefItemID\" = {} ORDER BY \"PointOrder\"").format(sql.Placeholder()),
+                (item['ItemID'],),
+                cursor_factory=RealDictCursor
+            )
+            item['points'] = points_result if points_result else []
+            items.append(item)
+
         return jsonify(items)
-    
     except Exception as e:
         logger.error(f"Error loading relief data for block {block_id}: {str(e)}")
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
         return jsonify({'error': str(e)}), 500

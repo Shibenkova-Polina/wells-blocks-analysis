@@ -18,7 +18,14 @@
             <h1><i class="fas fa-chart-line"></i> Аналитика блока {{ block_name }}</h1>
             <div class="header-actions">
                 <a href="/borehole-analytics" class="btn btn-back"><i class="fas fa-arrow-left"></i> Назад</a>
-                <button id="export-btn" class="btn btn-export"><i class="fas fa-file-export"></i> Экспорт</button>
+                <div class="export-dropdown">
+                    <button id="export-btn" class="btn btn-export"><i class="fas fa-file-export"></i> Экспорт <i class="fas fa-chevron-down"></i></button>
+                    <div class="export-dropdown-content">
+                        <a href="#" onclick="exportReport('csv')"><i class="fas fa-file-csv"></i> CSV</a>
+                        <a href="#" onclick="exportReport('json')"><i class="fas fa-file-code"></i> JSON</a>
+                        <a href="#" onclick="exportReport('txt')"><i class="fas fa-file-alt"></i> TXT</a>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="block-info-section">
@@ -1108,16 +1115,6 @@
             }
         });
 
-        function loadScript(src) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = src;
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
-        }
-
         function renderDrillingGrid() {
             const ctx = document.getElementById('drillingGridChart').getContext('2d');
             
@@ -1196,6 +1193,142 @@
                 
                 window.drillingGridChart.update();
             }
+        }
+
+        function exportReport(format) {
+            const blockId = '{{ block_id }}';
+            
+            // Показываем уведомление о начале экспорта
+            const swalInstance = Swal.fire({
+                title: 'Подготовка отчета...',
+                html: 'Пожалуйста, подождите',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            // Определяем тип данных для экспорта
+            const dataTypes = ['deviations', 'boreholes', 'critical'];
+            let completed = 0;
+            let errors = [];
+            
+            // Экспортируем все типы данных последовательно
+            const exportSequentially = async () => {
+                for (const dataType of dataTypes) {
+                    try {
+                        await downloadExport(blockId, dataType, format);
+                        completed++;
+                    } catch (error) {
+                        console.error(`Export error for ${dataType}:`, error);
+                        errors.push(`${dataType}: ${error.message}`);
+                    }
+                }
+                
+                swalInstance.close();
+                
+                if (errors.length === 0) {
+                    Swal.fire({
+                        title: 'Готово!',
+                        text: `Все отчеты успешно экспортированы в формате ${format.toUpperCase()}`,
+                        icon: 'success',
+                        timer: 3000
+                    });
+                } else if (errors.length === dataTypes.length) {
+                    Swal.fire({
+                        title: 'Ошибка!',
+                        html: `Не удалось экспортировать отчеты:<br>${errors.join('<br>')}`,
+                        icon: 'error'
+                    });
+                } else {
+                    Swal.fire({
+                        title: 'Частично успешно!',
+                        html: `Экспортировано: ${completed}/${dataTypes.length}<br>Ошибки:<br>${errors.join('<br>')}`,
+                        icon: 'warning'
+                    });
+                }
+            };
+            
+            exportSequentially();
+        }
+
+        function downloadExport(blockId, dataType, format) {
+            return new Promise((resolve, reject) => {
+                const url = `/api/export/block/${blockId}/${dataType}/${format}`;
+                
+                console.log(`Starting export: ${url}`);
+                
+                fetch(url)
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(errorData => {
+                                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                            });
+                        }
+                        
+                        // Проверяем content-type для определения успешного ответа
+                        const contentType = response.headers.get('content-type');
+                        if (contentType && contentType.includes('application/json')) {
+                            return response.json().then(errorData => {
+                                throw new Error(errorData.error || 'Unknown error');
+                            });
+                        }
+                        
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        if (!blob || blob.size === 0) {
+                            throw new Error('Empty file received');
+                        }
+                        
+                        // Создаем ссылку для скачивания
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        
+                        // Генерируем имя файла
+                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+                        const filename = `block_${blockId}_${dataType}_${timestamp}.${format}`;
+                        a.download = filename;
+                        
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        console.log(`Successfully exported: ${filename}`);
+                        resolve();
+                    })
+                    .catch(error => {
+                        console.error(`Download error for ${dataType}:`, error);
+                        reject(error);
+                    });
+            });
+        }
+
+        // Обработчики для кнопок экспорта
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof html2pdf === 'undefined') {
+                // Динамически загружаем библиотеки если нужно
+                loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js');
+            }
+        });
+
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                // Проверяем, не загружена ли библиотека уже
+                if (document.querySelector(`script[src="${src}"]`)) {
+                    resolve();
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
         }
 
         // Поиск скважин

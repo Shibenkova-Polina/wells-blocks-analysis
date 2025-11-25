@@ -48,6 +48,49 @@
             </div>
 
             <div class="row">
+                <div class="card full-width">
+                    <h2><i class="fas fa-download"></i> Экспорт отчетов</h2>
+                    <div class="export-options">
+                        <div class="export-section">
+                            <h3>Отчет по блокам</h3>
+                            <div class="export-buttons">
+                                <button class="btn-export" onclick="exportReport('blocks', 'csv')">CSV</button>
+                                <button class="btn-export" onclick="exportReport('blocks', 'json')">JSON</button>
+                                <button class="btn-export" onclick="exportReport('blocks', 'txt')">TXT</button>
+                            </div>
+                        </div>
+                        
+                        <div class="export-section">
+                            <h3>Прогресс бурения</h3>
+                            <div class="export-buttons">
+                                <button class="btn-export" onclick="exportReport('drilling_progress', 'csv')">CSV</button>
+                                <button class="btn-export" onclick="exportReport('drilling_progress', 'json')">JSON</button>
+                                <button class="btn-export" onclick="exportReport('drilling_progress', 'txt')">TXT</button>
+                            </div>
+                        </div>
+                        
+                        <div class="export-section">
+                            <h3>Производительность станков</h3>
+                            <div class="export-buttons">
+                                <button class="btn-export" onclick="exportReport('rig_productivity', 'csv')">CSV</button>
+                                <button class="btn-export" onclick="exportReport('rig_productivity', 'json')">JSON</button>
+                                <button class="btn-export" onclick="exportReport('rig_productivity', 'txt')">TXT</button>
+                            </div>
+                        </div>
+
+                        <div class="export-section">
+                            <h3>Эффективность бурения</h3>
+                            <div class="export-buttons">
+                                <button class="btn-export" onclick="exportReport('blocks_efficiency', 'csv')">CSV</button>
+                                <button class="btn-export" onclick="exportReport('blocks_efficiency', 'json')">JSON</button>
+                                <button class="btn-export" onclick="exportReport('blocks_efficiency', 'txt')">TXT</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
                 <div class="card">
                     <h2><i class="fas fa-bolt"></i> Производительность моделей станков</h2>
                     <div class="chart-container">
@@ -145,5 +188,50 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/script.js"></script>
+    <script>
+        // Функция для экспорта отчетов
+        function exportReport(reportType, formatType) {
+            const url = `/api/export/${reportType}/${formatType}`;
+            
+            // Показываем индикатор загрузки
+            const button = event.target;
+            const originalText = button.textContent;
+            button.textContent = 'Загрузка...';
+            button.disabled = true;
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка при экспорте');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // Создаем ссылку для скачивания
+                    const downloadUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    
+                    // Генерируем имя файла
+                    const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                    const filename = `${reportType}_report_${timestamp}.${formatType}`;
+                    
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(downloadUrl);
+                })
+                .catch(error => {
+                    console.error('Ошибка экспорта:', error);
+                    alert('Произошла ошибка при экспорте отчета');
+                })
+                .finally(() => {
+                    // Восстанавливаем кнопку
+                    button.textContent = originalText;
+                    button.disabled = false;
+                });
+        }
+    </script>
 </body>
 </html>

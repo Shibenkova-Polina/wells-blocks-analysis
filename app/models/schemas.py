@@ -1,6 +1,5 @@
 from pydantic import BaseModel, validator
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional
 
 class BlockSearchRequest(BaseModel):
     block_id: Optional[str] = None

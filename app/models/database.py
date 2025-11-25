@@ -36,7 +36,6 @@ class DatabaseManager:
         """Получение конфигурации БД"""
         try:
             from flask import current_app
-            # Пробуем получить из current_app
             return {
                 'host': current_app.config.get('DB_HOST') or os.getenv('DB_HOST', 'localhost'),
                 'database': current_app.config.get('DB_NAME') or os.getenv('DB_NAME', 'postgres'),
@@ -45,7 +44,6 @@ class DatabaseManager:
                 'port': current_app.config.get('DB_PORT') or os.getenv('DB_PORT', '5432')
             }
         except RuntimeError:
-            # Если нет контекста приложения, используем настройки из env
             return self.db_config
     
     @contextmanager
@@ -56,7 +54,6 @@ class DatabaseManager:
             db_config = self.get_db_config()
             logger.info(f"Connecting to database: {db_config['host']}:{db_config['port']}")
             
-            # Добавляем таймаут и обработку ошибок
             conn = psycopg2.connect(
                 **db_config,
                 connect_timeout=10
@@ -125,5 +122,5 @@ class DatabaseManager:
             logger.error(f"Database connection test failed: {e}")
             return False
 
-# Создаем экземпляр для использования во всем приложении
-db = DatabaseManager()
+# Создаем глобальный экземпляр для использования во всем приложении
+db_manager = DatabaseManager()

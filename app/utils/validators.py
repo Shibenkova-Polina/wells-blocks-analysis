@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import request, abort
+from flask import abort
 import re
 
 def validate_block_id(f):
@@ -19,7 +19,7 @@ def validate_block_input(block_input):
     if len(block_input) > 100:
         return False, "Block input too long"
     
-    # Проверка на SQL-инъекции (базовая)
+    # Проверка на SQL-инъекции
     if any(char in block_input for char in [';', "'", '"', '--', '/*']):
         return False, "Invalid characters in input"
     
